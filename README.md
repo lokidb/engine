@@ -23,7 +23,7 @@ type KeyValueStore interface {
     Del(string) bool
     Keys() []string
     Flush()
-	Search(func(value []byte) bool) ([][]byte, error)
+    Search(func(value []byte) bool) ([][]byte, error)
 }
 ```
 
