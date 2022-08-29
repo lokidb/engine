@@ -1,7 +1,7 @@
 # lokidb engine
 LokiDB storage engine
 
-[![Test](https://github.com/lokidb/engine/actions/workflows/test.yml/badge.svg)](https://github.com/lokidb/engine/actions/workflows/test.yml)
+[![Test](https://github.com/lokidb/engine/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/lokidb/engine/actions/workflows/test.yml)
 ---
 
 #### Import
