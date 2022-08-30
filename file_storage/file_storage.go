@@ -71,8 +71,8 @@ func (fst *FileKeyValueStore) openOrPanic() *os.File {
 }
 
 func (fs *FileKeyValueStore) close(file *os.File) {
+	defer fs.fileLock.Unlock()
 	file.Close()
-	fs.fileLock.Unlock()
 }
 
 // Returning value of key stored on file, or file cursor when valueReader is not nil
@@ -172,7 +172,7 @@ func (fs *FileKeyValueStore) Del(key string) error {
 
 	// If deleted count is more then <cleanupOnDeletedPercentage> of all the keys, start cleanup
 	fs.deletedKeyCount++
-	totalKeys := len(fs.keysIndex) + fs.deletedKeyCount
+	totalKeys := fs.safeLen() + fs.deletedKeyCount
 	if fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount) {
 		fs.cleanupLock.Add(1)
 		go fs.cleanUp()
@@ -185,7 +185,7 @@ func (fs *FileKeyValueStore) Keys() []string {
 	fs.indexLock.RLock()
 	defer fs.indexLock.RUnlock()
 
-	keys := make([]string, len(fs.keysIndex))
+	keys := make([]string, fs.safeLen())
 
 	i := 0
 	for k := range fs.keysIndex {

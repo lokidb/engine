@@ -21,3 +21,10 @@ func (fs *FileKeyValueStore) safeDel(key string) {
 
 	delete(fs.keysIndex, key)
 }
+
+func (fs *FileKeyValueStore) safeLen() int {
+	fs.indexLock.RLock()
+	defer fs.indexLock.RUnlock()
+
+	return len(fs.keysIndex)
+}
