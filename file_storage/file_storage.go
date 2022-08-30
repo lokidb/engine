@@ -27,7 +27,6 @@ type FileKeyValueStore struct {
 	deletedKeyCount int
 	fileLock        sync.Mutex
 	indexLock       sync.RWMutex
-	cleanupLock     sync.WaitGroup
 }
 
 func New(filePath string) *FileKeyValueStore {
@@ -52,7 +51,7 @@ func openOrCreate(filePath string) *os.File {
 	}
 
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 
 	return file
@@ -83,9 +82,6 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 		return nil, err
 	}
 
-	// Wait for the cleanup to end when it accure
-	fs.cleanupLock.Wait()
-
 	// Find item position from the index
 	itemPosition, exists := fs.safeGet(key)
 
@@ -112,9 +108,6 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 	if err != nil {
 		return err
 	}
-
-	// Wait for the cleanup to end when it accure
-	fs.cleanupLock.Wait()
 
 	_, exists := fs.safeGet(key)
 
@@ -151,9 +144,6 @@ func (fs *FileKeyValueStore) Del(key string) error {
 		return err
 	}
 
-	// Wait for the cleanup to end when it accure
-	fs.cleanupLock.Wait()
-
 	// Get item position from index, if not found return error
 	itemPosition, exists := fs.safeGet(key)
 	if !exists {
@@ -163,18 +153,17 @@ func (fs *FileKeyValueStore) Del(key string) error {
 	fs.safeDel(key)
 
 	file := fs.openOrPanic()
-	defer fs.close(file)
-
 	err = markItemAsDeletedOnFile(file, itemPosition)
 	if err != nil {
+		fs.close(file)
 		return err
 	}
+	fs.close(file)
 
 	// If deleted count is more then <cleanupOnDeletedPercentage> of all the keys, start cleanup
 	fs.deletedKeyCount++
 	totalKeys := fs.safeLen() + fs.deletedKeyCount
 	if fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount) {
-		fs.cleanupLock.Add(1)
 		go fs.cleanUp()
 	}
 
@@ -199,9 +188,9 @@ func (fs *FileKeyValueStore) Keys() []string {
 func (fs *FileKeyValueStore) Flush() {
 	fs.fileLock.Lock()
 	defer fs.fileLock.Unlock()
+
 	fs.indexLock.Lock()
 	defer fs.indexLock.Unlock()
-	fs.cleanupLock.Wait()
 
 	fs.keysIndex = make(map[string]int64)
 	fs.deletedKeyCount = 0

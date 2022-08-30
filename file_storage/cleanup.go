@@ -1,13 +1,21 @@
 package filestore
 
-import "os"
+import (
+	"io/fs"
+	"os"
+	"time"
+)
 
-func (fs *FileKeyValueStore) cleanUp() error {
-	defer fs.cleanupLock.Done()
+func (fst *FileKeyValueStore) cleanUp() error {
+	fst.fileLock.Lock()
+	defer fst.fileLock.Unlock()
 
-	file := fs.openOrPanic()
+	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))
+	if err != nil {
+		panic(err)
+	}
 
-	cleanFile, err := os.Create(fs.filePath + cleanFileExtension)
+	cleanFile, err := os.Create(fst.filePath + cleanFileExtension)
 	if err != nil {
 		return err
 	}
@@ -18,7 +26,7 @@ func (fs *FileKeyValueStore) cleanUp() error {
 			if err != nil {
 				panic(err)
 			}
-			fs.safeSet(key, itemPosition)
+			fst.safeSet(key, itemPosition)
 		}
 	})
 
@@ -27,15 +35,18 @@ func (fs *FileKeyValueStore) cleanUp() error {
 	}
 
 	cleanFile.Close()
-	fs.close(file)
+	file.Close()
 
-	fs.deletedKeyCount = 0
+	fst.deletedKeyCount = 0
 
-	if err = os.Remove(fs.filePath); err != nil {
+	if err = os.Remove(fst.filePath); err != nil {
 		return err
 	}
 
-	if err = os.Rename(fs.filePath+cleanFileExtension, fs.filePath); err != nil {
+	// OS takes time to remove file
+	time.Sleep(time.Millisecond * 1)
+
+	if err = os.Rename(fst.filePath+cleanFileExtension, fst.filePath); err != nil {
 		panic(err)
 	}
 

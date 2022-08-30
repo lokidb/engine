@@ -3,6 +3,7 @@ package filestore
 import (
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -40,10 +41,10 @@ func TestFullUse(t *testing.T) {
 
 func TestCleanup(t *testing.T) {
 	t.Cleanup(func() {
-		os.Remove("./testfile.test")
+		os.Remove("./testfile5.test")
 	})
 
-	db := New("./testfile.test")
+	db := New("./testfile5.test")
 
 	for i := 0; i < 1000; i++ {
 		err := db.Set(strconv.Itoa(i), []byte{45, 84})
@@ -59,22 +60,22 @@ func TestCleanup(t *testing.T) {
 		}
 	}
 
-	fileInfo, err := os.Stat("./testfile.test")
+	fileInfo, err := os.Stat("./testfile5.test")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if fileInfo.Size() > 50*7 { // minNotCleanedKeys(50) * (headerSize(5) + value(2))
+	if fileInfo.Size() > 500*7 { // minNotCleanedKeys(50) * (headerSize(5) + value(2))
 		t.Errorf("expected the file to be fully cleaned")
 	}
 }
 
 func TestKeys(t *testing.T) {
 	t.Cleanup(func() {
-		os.Remove("./testfile.test")
+		os.Remove("./testfile8.test")
 	})
 
-	db := New("./testfile.test")
+	db := New("./testfile8.test")
 
 	for i := 0; i < 1000; i++ {
 		err := db.Set(strconv.Itoa(i), []byte{45, 84})
@@ -155,4 +156,39 @@ func TestFlushKeepFile(t *testing.T) {
 	if err != nil {
 		t.Error("expecting the file to exist after flush")
 	}
+}
+
+func TestThreadSafe(t *testing.T) {
+	t.Cleanup(func() {
+		os.Remove("./testfile3.test")
+	})
+
+	db := New("./testfile3.test")
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			db.Set("a", []byte("b"))
+			wg.Done()
+		}()
+	}
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			db.Get("a", nil)
+			wg.Done()
+		}()
+	}
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			db.Del("a")
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 }
