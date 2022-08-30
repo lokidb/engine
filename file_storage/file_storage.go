@@ -25,7 +25,8 @@ type FileKeyValueStore struct {
 	filePath        string
 	keysIndex       map[string]int64
 	deletedKeyCount int
-	lock            sync.Mutex
+	fileLock        sync.Mutex
+	indexLock       sync.RWMutex
 	cleanupLock     sync.WaitGroup
 }
 
@@ -58,11 +59,11 @@ func openOrCreate(filePath string) *os.File {
 }
 
 func (fst *FileKeyValueStore) openOrPanic() *os.File {
-	fst.lock.Lock()
+	fst.fileLock.Lock()
 
 	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))
 	if err != nil {
-		fst.lock.Unlock()
+		fst.fileLock.Unlock()
 		log.Panic(err)
 	}
 
@@ -71,7 +72,7 @@ func (fst *FileKeyValueStore) openOrPanic() *os.File {
 
 func (fs *FileKeyValueStore) close(file *os.File) {
 	file.Close()
-	fs.lock.Unlock()
+	fs.fileLock.Unlock()
 }
 
 // Returning value of key stored on file, or file cursor when valueReader is not nil
@@ -86,7 +87,8 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 	fs.cleanupLock.Wait()
 
 	// Find item position from the index
-	itemPosition, exists := fs.keysIndex[key]
+	itemPosition, exists := fs.safeGet(key)
+
 	if !exists {
 		return nil, nil
 	}
@@ -114,7 +116,8 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 	// Wait for the cleanup to end when it accure
 	fs.cleanupLock.Wait()
 
-	_, exists := fs.keysIndex[key]
+	_, exists := fs.safeGet(key)
+
 	if exists {
 		// TODO: check if its better to deleted every time or to check value and delete only on change
 		currentValue, err := fs.Get(key, nil)
@@ -134,7 +137,7 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 
 	itemPosition, err := insertItemToFile(file, key, value)
 	if err == nil {
-		fs.keysIndex[key] = itemPosition
+		fs.safeSet(key, itemPosition)
 	}
 
 	return err
@@ -152,12 +155,12 @@ func (fs *FileKeyValueStore) Del(key string) error {
 	fs.cleanupLock.Wait()
 
 	// Get item position from index, if not found return error
-	itemPosition, exists := fs.keysIndex[key]
+	itemPosition, exists := fs.safeGet(key)
 	if !exists {
 		return fmt.Errorf("key does not exists")
 	}
 
-	delete(fs.keysIndex, key)
+	fs.safeDel(key)
 
 	file := fs.openOrPanic()
 	defer fs.close(file)
@@ -179,6 +182,9 @@ func (fs *FileKeyValueStore) Del(key string) error {
 }
 
 func (fs *FileKeyValueStore) Keys() []string {
+	fs.indexLock.RLock()
+	defer fs.indexLock.RUnlock()
+
 	keys := make([]string, len(fs.keysIndex))
 
 	i := 0
@@ -191,8 +197,10 @@ func (fs *FileKeyValueStore) Keys() []string {
 }
 
 func (fs *FileKeyValueStore) Flush() {
-	fs.lock.Lock()
-	defer fs.lock.Unlock()
+	fs.fileLock.Lock()
+	defer fs.fileLock.Unlock()
+	fs.indexLock.Lock()
+	defer fs.indexLock.Unlock()
 	fs.cleanupLock.Wait()
 
 	fs.keysIndex = make(map[string]int64)

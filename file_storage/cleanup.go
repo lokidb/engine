@@ -18,8 +18,7 @@ func (fs *FileKeyValueStore) cleanUp() error {
 			if err != nil {
 				panic(err)
 			}
-
-			fs.keysIndex[key] = itemPosition
+			fs.safeSet(key, itemPosition)
 		}
 	})
 
