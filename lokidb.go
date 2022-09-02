@@ -59,6 +59,11 @@ func (s *storage) Set(key string, value []byte) error {
 	filename := s.filesRing.GetMemberForKey(key)
 	fileStore := s.fileStores[filename]
 
+	cacheValue := s.lruCache.Get(key)
+	if equals(cacheValue, value) {
+		return nil
+	}
+
 	s.lruCache.Push(key, value)
 	err := fileStore.Set(key, value)
 	return err
