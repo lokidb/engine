@@ -92,6 +92,7 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 // Save key value in file
 func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 	fs.lock.Lock()
+	defer fs.lock.Unlock()
 
 	// Validate key
 	err := isValidKey(key)
@@ -108,10 +109,12 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 	_, exists := fs.keysIndex[key]
 
 	if exists {
-		fs.lock.Unlock()
 
 		// TODO: check if its better to deleted every time or to check value and delete only on change
+		fs.lock.Unlock()
 		currentValue, err := fs.Get(key, nil)
+		fs.lock.Lock()
+
 		if err != nil {
 			return err
 		}
@@ -119,10 +122,10 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 		if equal(value, currentValue) {
 			return nil
 		} else {
+			fs.lock.Unlock()
 			fs.Del(key)
+			fs.lock.Lock()
 		}
-
-		fs.lock.Lock()
 	}
 
 	file := fs.openOrPanic()
@@ -133,7 +136,6 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 		fs.keysIndex[key] = itemPosition
 	}
 
-	fs.lock.Unlock()
 	return err
 }
 
