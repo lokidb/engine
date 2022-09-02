@@ -3,12 +3,11 @@ package filestore
 import (
 	"io/fs"
 	"os"
-	"time"
 )
 
 func (fst *FileKeyValueStore) cleanUp() error {
-	fst.fileLock.Lock()
-	defer fst.fileLock.Unlock()
+	fst.lock.Lock()
+	defer fst.lock.Unlock()
 
 	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))
 	if err != nil {
@@ -26,7 +25,7 @@ func (fst *FileKeyValueStore) cleanUp() error {
 			if err != nil {
 				panic(err)
 			}
-			fst.safeSet(key, itemPosition)
+			fst.keysIndex[key] = itemPosition
 		}
 	})
 
@@ -42,9 +41,6 @@ func (fst *FileKeyValueStore) cleanUp() error {
 	if err = os.Remove(fst.filePath); err != nil {
 		return err
 	}
-
-	// OS takes time to remove file
-	time.Sleep(time.Millisecond * 1)
 
 	if err = os.Rename(fst.filePath+cleanFileExtension, fst.filePath); err != nil {
 		panic(err)

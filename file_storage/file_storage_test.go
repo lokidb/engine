@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestFullUse(t *testing.T) {
@@ -59,6 +60,8 @@ func TestCleanup(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	time.Sleep(time.Second * 1)
 
 	fileInfo, err := os.Stat("./testfile5.test")
 	if err != nil {
