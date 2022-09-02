@@ -25,8 +25,7 @@ type FileKeyValueStore struct {
 	filePath        string
 	keysIndex       map[string]int64
 	deletedKeyCount int
-	fileLock        sync.Mutex
-	indexLock       sync.RWMutex
+	lock            sync.Mutex
 }
 
 func New(filePath string) *FileKeyValueStore {
@@ -58,24 +57,19 @@ func openOrCreate(filePath string) *os.File {
 }
 
 func (fst *FileKeyValueStore) openOrPanic() *os.File {
-	fst.fileLock.Lock()
-
 	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))
 	if err != nil {
-		fst.fileLock.Unlock()
 		log.Panic(err)
 	}
 
 	return file
 }
 
-func (fs *FileKeyValueStore) close(file *os.File) {
-	defer fs.fileLock.Unlock()
-	file.Close()
-}
-
 // Returning value of key stored on file, or file cursor when valueReader is not nil
 func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]byte, error)) ([]byte, error) {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
+
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
@@ -83,20 +77,22 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 	}
 
 	// Find item position from the index
-	itemPosition, exists := fs.safeGet(key)
+	itemPosition, exists := fs.keysIndex[key]
 
 	if !exists {
 		return nil, nil
 	}
 
 	file := fs.openOrPanic()
-	defer fs.close(file)
+	defer file.Close()
 
 	return getValueFromPosition(file, itemPosition, nil)
 }
 
 // Save key value in file
 func (fs *FileKeyValueStore) Set(key string, value []byte) error {
+	fs.lock.Lock()
+
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
@@ -109,9 +105,11 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 		return err
 	}
 
-	_, exists := fs.safeGet(key)
+	_, exists := fs.keysIndex[key]
 
 	if exists {
+		fs.lock.Unlock()
+
 		// TODO: check if its better to deleted every time or to check value and delete only on change
 		currentValue, err := fs.Get(key, nil)
 		if err != nil {
@@ -123,21 +121,27 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 		} else {
 			fs.Del(key)
 		}
+
+		fs.lock.Lock()
 	}
 
 	file := fs.openOrPanic()
-	defer fs.close(file)
+	defer file.Close()
 
 	itemPosition, err := insertItemToFile(file, key, value)
 	if err == nil {
-		fs.safeSet(key, itemPosition)
+		fs.keysIndex[key] = itemPosition
 	}
 
+	fs.lock.Unlock()
 	return err
 }
 
 // Mark key value on file as deleted
 func (fs *FileKeyValueStore) Del(key string) error {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
+
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
@@ -145,25 +149,27 @@ func (fs *FileKeyValueStore) Del(key string) error {
 	}
 
 	// Get item position from index, if not found return error
-	itemPosition, exists := fs.safeGet(key)
+	itemPosition, exists := fs.keysIndex[key]
 	if !exists {
 		return fmt.Errorf("key does not exists")
 	}
 
-	fs.safeDel(key)
+	delete(fs.keysIndex, key)
 
 	file := fs.openOrPanic()
+	defer file.Close()
+
 	err = markItemAsDeletedOnFile(file, itemPosition)
 	if err != nil {
-		fs.close(file)
 		return err
 	}
-	fs.close(file)
 
 	// If deleted count is more then <cleanupOnDeletedPercentage> of all the keys, start cleanup
 	fs.deletedKeyCount++
-	totalKeys := fs.safeLen() + fs.deletedKeyCount
-	if fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount) {
+	totalKeys := len(fs.keysIndex) + fs.deletedKeyCount
+	doCleanup := fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount)
+
+	if doCleanup {
 		go fs.cleanUp()
 	}
 
@@ -171,10 +177,10 @@ func (fs *FileKeyValueStore) Del(key string) error {
 }
 
 func (fs *FileKeyValueStore) Keys() []string {
-	fs.indexLock.RLock()
-	defer fs.indexLock.RUnlock()
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
 
-	keys := make([]string, fs.safeLen())
+	keys := make([]string, len(fs.keysIndex))
 
 	i := 0
 	for k := range fs.keysIndex {
@@ -186,11 +192,8 @@ func (fs *FileKeyValueStore) Keys() []string {
 }
 
 func (fs *FileKeyValueStore) Flush() {
-	fs.fileLock.Lock()
-	defer fs.fileLock.Unlock()
-
-	fs.indexLock.Lock()
-	defer fs.indexLock.Unlock()
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
 
 	fs.keysIndex = make(map[string]int64)
 	fs.deletedKeyCount = 0
@@ -203,6 +206,9 @@ func (fs *FileKeyValueStore) Flush() {
 }
 
 func (fs *FileKeyValueStore) Search(evaluate func(value []byte) bool) ([][]byte, error) {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
+
 	file := openOrCreate(fs.filePath)
 	defer file.Close()
 
