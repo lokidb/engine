@@ -17,7 +17,7 @@ func equal(a, b []byte) bool {
 }
 
 func TestMoveToTop(t *testing.T) {
-	c := New(3)
+	c := New(50)
 
 	c.Push("a", []byte("a"))
 	c.Push("b", []byte("b"))
@@ -36,7 +36,7 @@ func TestMoveToTop(t *testing.T) {
 }
 
 func TestDel(t *testing.T) {
-	c := New(3)
+	c := New(50)
 
 	c.Push("a", []byte("a"))
 	c.Push("b", []byte("b"))
@@ -50,7 +50,7 @@ func TestDel(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
-	c := New(3)
+	c := New(50)
 
 	c.Push("a", []byte("a"))
 	c.Push("b", []byte("b"))
