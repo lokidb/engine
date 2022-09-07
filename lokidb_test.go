@@ -112,7 +112,7 @@ func TestDelete(t *testing.T) {
 		os.Remove("ldb-0.loki")
 	})
 
-	engine := New("./", 5, 1)
+	engine := New("./", 3, 1)
 
 	err := engine.Set("key", []byte("value"))
 	if err != nil {

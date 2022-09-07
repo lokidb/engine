@@ -15,6 +15,7 @@ type keyValue struct {
 type cache struct {
 	keysList    *list.List
 	maxsize     int
+	currentSize int
 	cachedItems map[string]*list.Element
 	lock        sync.Mutex
 }
@@ -31,6 +32,7 @@ func New(maxsize int) Cache {
 	c.keysList = list.New()
 	c.cachedItems = make(map[string]*list.Element, maxsize+1)
 	c.maxsize = maxsize
+	c.currentSize = 0
 
 	return c
 }
@@ -44,6 +46,7 @@ func (c *cache) Push(key string, value []byte) {
 	defer c.lock.Unlock()
 
 	kvElement := c.cachedItems[key]
+	kvSize := len(value) + len(key)
 
 	// If the key already in the cache
 	if kvElement != nil {
@@ -54,24 +57,18 @@ func (c *cache) Push(key string, value []byte) {
 		return
 	}
 
-	// if we need to remove other key to insert this one just replace the values to avoid allocation
-	if len(c.cachedItems)+1 > c.maxsize {
+	// remove items until there is enough space for the new item
+	for kvSize < c.maxsize && len(c.cachedItems) > 0 && c.currentSize+kvSize > c.maxsize {
 		kvElement := c.keysList.Back()
 		kv := keyElementToKeyValue(kvElement)
 
 		delete(c.cachedItems, kv.key)
-
-		kv.key = key
-		kv.value = value
-
-		c.cachedItems[key] = kvElement
-		c.keysList.MoveToFront(kvElement)
-
-		return
+		c.keysList.Remove(kvElement)
 	}
 
 	kvElement = c.keysList.PushFront(&keyValue{key: key, value: value})
 	c.cachedItems[key] = kvElement
+	c.currentSize += kvSize
 }
 
 func (c *cache) Get(key string) []byte {
@@ -99,8 +96,11 @@ func (c *cache) Del(key string) {
 		return
 	}
 
+	kvSize := len(keyElementToKeyValue(kvElement).value) + len(key)
+
 	c.keysList.Remove(kvElement)
 	delete(c.cachedItems, key)
+	c.currentSize -= kvSize
 }
 
 func (c *cache) Clear() {
@@ -109,6 +109,7 @@ func (c *cache) Clear() {
 
 	// Clear cached item
 	c.cachedItems = make(map[string]*list.Element)
+	c.currentSize = 0
 
 	// Clear list
 	c.keysList.Init()
