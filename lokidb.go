@@ -44,7 +44,7 @@ func New(rootPath string, cacheSize int, filesCount int) KeyValueStore {
 	s.aolPath = filepath.Join(rootPath, aolFilename+fileExtension)
 	s.lruCache = lrucache.New(cacheSize)
 	s.fileStores = createFileStores(s.rootPath, filesCount)
-	s.filesRing, _ = consistent.New(1000)
+	s.filesRing, _ = consistent.New(100000)
 
 	for filename := range s.fileStores {
 		(s.filesRing).AddMember(filename)
