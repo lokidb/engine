@@ -18,7 +18,7 @@ const maxValueLenght = 16777214
 const itemHeaderLenght = 5
 const filePermissions = 600
 const cleanupOnDeletedRatio = 0.3
-const minDeletedKeyForCleanup = 50
+const minDeletedKeyForCleanup = 500
 const cleanFileExtension = ".clean"
 
 type FileKeyValueStore struct {

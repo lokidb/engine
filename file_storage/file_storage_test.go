@@ -68,7 +68,7 @@ func TestCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fileInfo.Size() > 500*7 { // minNotCleanedKeys(50) * (headerSize(5) + value(2))
+	if fileInfo.Size() > 5000 { // minNotCleanedKeys(50) * (headerSize(5) + value(2))
 		t.Errorf("expected the file to be fully cleaned")
 	}
 }
