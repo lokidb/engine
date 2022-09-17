@@ -6,7 +6,6 @@ import (
 )
 
 func (fst *FileKeyValueStore) cleanUp() error {
-	fst.lock.Lock()
 	defer fst.lock.Unlock()
 
 	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))

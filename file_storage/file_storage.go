@@ -142,17 +142,18 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 // Mark key value on file as deleted
 func (fs *FileKeyValueStore) Del(key string) error {
 	fs.lock.Lock()
-	defer fs.lock.Unlock()
 
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
+		fs.lock.Unlock()
 		return err
 	}
 
 	// Get item position from index, if not found return error
 	itemPosition, exists := fs.keysIndex[key]
 	if !exists {
+		fs.lock.Unlock()
 		return fmt.Errorf("key does not exists")
 	}
 
@@ -163,6 +164,7 @@ func (fs *FileKeyValueStore) Del(key string) error {
 
 	err = markItemAsDeletedOnFile(file, itemPosition)
 	if err != nil {
+		fs.lock.Unlock()
 		return err
 	}
 
@@ -173,6 +175,8 @@ func (fs *FileKeyValueStore) Del(key string) error {
 
 	if doCleanup {
 		go fs.cleanUp()
+	} else {
+		fs.lock.Unlock()
 	}
 
 	return nil
