@@ -1,11 +1,12 @@
 package filestore
 
 import (
+	"context"
 	"io/fs"
 	"os"
 )
 
-func (fst *FileKeyValueStore) cleanUp() error {
+func (fst *FileKeyValueStore) cleanUp(ctx context.Context) error {
 	defer fst.lock.Unlock()
 
 	file, err := os.OpenFile(fst.filePath, os.O_RDWR, fs.FileMode(filePermissions))
@@ -18,7 +19,7 @@ func (fst *FileKeyValueStore) cleanUp() error {
 		return err
 	}
 
-	err = scanFile(file, true, func(key string, value []byte, deleted bool, filePosition int64) {
+	err = scanFile(ctx, file, true, func(key string, value []byte, deleted bool, filePosition int64) {
 		if !deleted {
 			itemPosition, err := insertItemToFile(cleanFile, key, value)
 			if err != nil {

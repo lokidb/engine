@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"os"
@@ -78,49 +79,54 @@ func markItemAsDeletedOnFile(file *os.File, itemPosition int64) error {
 	return nil
 }
 
-func scanFile(file *os.File, readValues bool, callback func(key string, value []byte, deleted bool, filePosition int64)) error {
+func scanFile(ctx context.Context, file *os.File, readValues bool, callback func(key string, value []byte, deleted bool, filePosition int64)) error {
 	for {
-		currentPosition, err := file.Seek(0, io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-
-		itemHeader := make([]byte, itemHeaderLenght)
-
-		n, err := file.Read(itemHeader)
-		if err != nil {
-			if n == 0 {
-				break
-			} else {
-				return err
-			}
-		}
-
-		keyLenght := uint(itemHeader[0])
-		valueLenght := binary.LittleEndian.Uint16(itemHeader[1:4])
-		isDeletedFlag := uint(itemHeader[4])
-		key := make([]byte, keyLenght)
-		value := make([]byte, valueLenght)
-
-		_, err = file.Read(key)
-		if err != nil {
-			return err
-		}
-
-		if readValues {
-			_, err = file.Read(value)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			currentPosition, err := file.Seek(0, io.SeekCurrent)
 			if err != nil {
 				return err
 			}
-		}
-		callback(string(key), value, isDeletedFlag == 1, currentPosition)
 
-		if !readValues {
-			_, err = file.Seek(int64(valueLenght), io.SeekCurrent)
+			itemHeader := make([]byte, itemHeaderLenght)
+
+			n, err := file.Read(itemHeader)
+			if err != nil {
+				if n == 0 {
+					return nil
+				} else {
+					return err
+				}
+			}
+
+			keyLenght := uint(itemHeader[0])
+			valueLenght := binary.LittleEndian.Uint16(itemHeader[1:4])
+			isDeletedFlag := uint(itemHeader[4])
+			key := make([]byte, keyLenght)
+			value := make([]byte, valueLenght)
+
+			_, err = file.Read(key)
 			if err != nil {
 				return err
+			}
+
+			if readValues {
+				_, err = file.Read(value)
+				if err != nil {
+					return err
+				}
+			}
+
+			callback(string(key), value, isDeletedFlag == 1, currentPosition)
+
+			if !readValues {
+				_, err = file.Seek(int64(valueLenght), io.SeekCurrent)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
-	return nil
 }

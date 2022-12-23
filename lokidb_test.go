@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"testing"
@@ -187,7 +188,7 @@ func TestSearch(t *testing.T) {
 		db.Set(strconv.Itoa(i), []byte{byte(i)})
 	}
 
-	searchResults, err := db.Search(func(value []byte) bool {
+	searchResults, err := db.Search(context.Background(), func(value []byte) bool {
 		return value[0] >= 230
 	})
 

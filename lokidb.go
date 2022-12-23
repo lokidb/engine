@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,7 +35,7 @@ type KeyValueStore interface {
 	Del(string) bool
 	Keys() []string
 	Flush()
-	Search(func(value []byte) bool) ([][]byte, error)
+	Search(context.Context, func(value []byte) bool) ([][]byte, error)
 }
 
 func New(rootPath string, cacheSize int, filesCount int) KeyValueStore {
@@ -133,10 +134,10 @@ func (s *storage) Flush() {
 }
 
 // scan all the values in the store and filter them with the 'evaluate' function
-func (s *storage) Search(evaluate func(value []byte) bool) ([][]byte, error) {
+func (s *storage) Search(ctx context.Context, evaluate func(value []byte) bool) ([][]byte, error) {
 	results := make([][]byte, 0, 1000)
 	for _, fs := range s.fileStores {
-		fsResults, err := fs.Search(evaluate)
+		fsResults, err := fs.Search(ctx, evaluate)
 		if err != nil {
 			return nil, err
 		}
