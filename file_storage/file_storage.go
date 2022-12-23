@@ -4,6 +4,7 @@
 package filestore
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log"
@@ -32,7 +33,8 @@ func New(filePath string) *FileKeyValueStore {
 	fs := new(FileKeyValueStore)
 	fs.filePath = filePath
 
-	keysIndex, deletedKeysCount, err := createKeysIndex(filePath)
+	ctx := context.Background()
+	keysIndex, deletedKeysCount, err := createKeysIndex(ctx, filePath)
 	if err != nil {
 		panic(err)
 	}
@@ -174,7 +176,8 @@ func (fs *FileKeyValueStore) Del(key string) error {
 	doCleanup := fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount)
 
 	if doCleanup {
-		go fs.cleanUp()
+		ctx := context.Background()
+		go fs.cleanUp(ctx)
 	} else {
 		fs.lock.Unlock()
 	}
@@ -211,7 +214,7 @@ func (fs *FileKeyValueStore) Flush() {
 	file.Close()
 }
 
-func (fs *FileKeyValueStore) Search(evaluate func(value []byte) bool) ([][]byte, error) {
+func (fs *FileKeyValueStore) Search(ctx context.Context, evaluate func(value []byte) bool) ([][]byte, error) {
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
@@ -220,7 +223,7 @@ func (fs *FileKeyValueStore) Search(evaluate func(value []byte) bool) ([][]byte,
 
 	results := make([][]byte, 0, 1000)
 
-	err := scanFile(file, true, func(key string, value []byte, deleted bool, filePosition int64) {
+	err := scanFile(ctx, file, true, func(key string, value []byte, deleted bool, filePosition int64) {
 		if evaluate(value) {
 			results = append(results, value)
 		}

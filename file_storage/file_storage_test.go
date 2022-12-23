@@ -1,6 +1,7 @@
 package filestore
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"sync"
@@ -131,7 +132,7 @@ func TestSearch(t *testing.T) {
 		}
 	}
 
-	searchResults, err := db.Search(func(value []byte) bool {
+	searchResults, err := db.Search(context.Background(), func(value []byte) bool {
 		return int(value[0]) >= 230
 	})
 
