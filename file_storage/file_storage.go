@@ -72,6 +72,10 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
+	return fs.iGet(key, valueReader)
+}
+
+func (fs *FileKeyValueStore) iGet(key string, valueReader func(cursor.Cursor) ([]byte, error)) ([]byte, error) {
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
@@ -91,42 +95,53 @@ func (fs *FileKeyValueStore) Get(key string, valueReader func(cursor.Cursor) ([]
 	return getValueFromPosition(file, itemPosition, nil)
 }
 
-// Save key value in file
 func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 	fs.lock.Lock()
 	defer fs.lock.Unlock()
 
+	err, deletedItem := fs.iSet(key, value)
+
+	if deletedItem && fs.isCleanupRequired() {
+		ctx := context.Background()
+		go fs.cleanUp(ctx)
+	}
+
+	return err
+}
+
+// Save key value in file
+func (fs *FileKeyValueStore) iSet(key string, value []byte) (error, bool) {
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	// Validate value
 	err = isValidValue(value)
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	_, exists := fs.keysIndex[key]
 
-	if exists {
+	deletedItem := false
 
+	if exists {
 		// TODO: check if its better to deleted every time or to check value and delete only on change
-		fs.lock.Unlock()
-		currentValue, err := fs.Get(key, nil)
-		fs.lock.Lock()
+		currentValue, err := fs.iGet(key, nil)
 
 		if err != nil {
-			return err
+			return err, false
 		}
 
 		if equal(value, currentValue) {
-			return nil
+			return nil, false
 		} else {
-			fs.lock.Unlock()
-			fs.Del(key)
-			fs.lock.Lock()
+			err, deletedItem = fs.iDel(key)
+			if err != nil {
+				return err, deletedItem
+			}
 		}
 	}
 
@@ -138,25 +153,35 @@ func (fs *FileKeyValueStore) Set(key string, value []byte) error {
 		fs.keysIndex[key] = itemPosition
 	}
 
+	return err, deletedItem
+}
+
+func (fs *FileKeyValueStore) Del(key string) error {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
+
+	err, deletedItem := fs.iDel(key)
+
+	if deletedItem && fs.isCleanupRequired() {
+		ctx := context.Background()
+		go fs.cleanUp(ctx)
+	}
+
 	return err
 }
 
 // Mark key value on file as deleted
-func (fs *FileKeyValueStore) Del(key string) error {
-	fs.lock.Lock()
-
+func (fs *FileKeyValueStore) iDel(key string) (error, bool) {
 	// Validate key
 	err := isValidKey(key)
 	if err != nil {
-		fs.lock.Unlock()
-		return err
+		return err, false
 	}
 
 	// Get item position from index, if not found return error
 	itemPosition, exists := fs.keysIndex[key]
 	if !exists {
-		fs.lock.Unlock()
-		return fmt.Errorf("key does not exists")
+		return fmt.Errorf("key does not exists"), false
 	}
 
 	delete(fs.keysIndex, key)
@@ -166,23 +191,10 @@ func (fs *FileKeyValueStore) Del(key string) error {
 
 	err = markItemAsDeletedOnFile(file, itemPosition)
 	if err != nil {
-		fs.lock.Unlock()
-		return err
+		return err, false
 	}
 
-	// If deleted count is more then <cleanupOnDeletedPercentage> of all the keys, start cleanup
-	fs.deletedKeyCount++
-	totalKeys := len(fs.keysIndex) + fs.deletedKeyCount
-	doCleanup := fs.deletedKeyCount > minDeletedKeyForCleanup && float64(totalKeys)*cleanupOnDeletedRatio <= float64(fs.deletedKeyCount)
-
-	if doCleanup {
-		ctx := context.Background()
-		go fs.cleanUp(ctx)
-	} else {
-		fs.lock.Unlock()
-	}
-
-	return nil
+	return nil, true
 }
 
 func (fs *FileKeyValueStore) Keys() []string {
