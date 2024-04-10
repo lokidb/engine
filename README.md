@@ -2,6 +2,8 @@
 LokiDB storage engine
 
 [![Test](https://github.com/lokidb/engine/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/lokidb/engine/actions/workflows/test.yml)
+[![Bring Them Home](https://badge.yehoyada.com)](https://www.standwithus.com/)  
+
 ---
 
 #### Import
